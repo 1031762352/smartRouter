@@ -18,6 +18,8 @@ public class TransportGraphRouter {
 
     // 存储整个运输网络的图结构，key是出发地-目的地对，value是对应的运输方式列表
     private final Map<CityPair, List<TransportEdge>> transportGraph;
+    // 新增：优化后的出边查找Map，key为出发城市，value为该城市所有的出边列表
+    private final Map<String, List<TransportEdge>> outgoingEdgesMap;
     // 城市基础信息Map，可用于获取城市坐标等信息
     private final Map<String, CityBaseData> cityBaseDataMap;
     // 启发式计算器，用于A*算法中估算节点到终点的成本
@@ -44,6 +46,31 @@ public class TransportGraphRouter {
         this.transportGraph = transportGraph;
         this.cityBaseDataMap = cityBaseDataMap;
         this.heuristicCalculator = heuristicCalculator;
+
+        // 在构造函数中，从原始 transportGraph 构建 outgoingEdgesMap
+        this.outgoingEdgesMap = buildOutgoingEdgesMap(transportGraph);
+    }
+
+    /**
+     * 从原始的 transportGraph 构建一个优化的出边查找Map。
+     * 这个方法只在对象初始化时执行一次。
+     */
+    private Map<String, List<TransportEdge>> buildOutgoingEdgesMap(Map<CityPair, List<TransportEdge>> transportGraph) {
+        Map<String, List<TransportEdge>> resultMap = new HashMap<>();
+
+        for (Map.Entry<CityPair, List<TransportEdge>> entry : transportGraph.entrySet()) {
+            CityPair cityPair = entry.getKey();
+            String fromCity = cityPair.getFromCity();
+            List<TransportEdge> edges = entry.getValue();
+
+            // 如果 resultMap 中还没有这个出发城市的条目，就创建一个新的空列表
+            resultMap.computeIfAbsent(fromCity, k -> new ArrayList<>());
+
+            // 将当前城市对的所有边添加到对应的列表中
+            resultMap.get(fromCity).addAll(edges);
+        }
+
+        return resultMap;
     }
 
     /**
@@ -395,29 +422,28 @@ public class TransportGraphRouter {
     }
 
     /**
-     * 获取当前节点所有可能的出边
+     * 获取当前节点所有可能的出边（优化后版本）
      * @param currentNode 当前节点
      * @param bigTruckOnly 是否只考虑大板车运输
      * @return 出边列表
      */
     private List<TransportEdge> getOutgoingEdges(AStarNode currentNode, boolean bigTruckOnly) {
-        List<TransportEdge> edges = new ArrayList<>();
         String currentCity = currentNode.getCity();
 
-        // 添加常规运输边
-        for (Map.Entry<CityPair, List<TransportEdge>> entry : transportGraph.entrySet()) {
-            if (entry.getKey().getFromCity().equals(currentCity)) {
-                if (bigTruckOnly) {
-                    List<TransportEdge> filteredEdges = entry.getValue().stream()
-                            .filter(e -> e.getMode() == TransportModeEnum.BIG_TRUCK || e.getMode() == TransportModeEnum.DRIVER)
-                            .collect(Collectors.toList());
-                    edges.addAll(filteredEdges);
-                } else {
-                    edges.addAll(entry.getValue());
-                }
-            }
+        // 1. 从优化后的 Map 中直接获取当前城市的所有出边
+        // 如果没有出边，返回一个空列表，避免空指针异常
+        List<TransportEdge> allOutgoingEdges = outgoingEdgesMap.getOrDefault(currentCity, Collections.emptyList());
+
+        // 2. 如果不需要过滤，则直接返回所有出边
+        if (!bigTruckOnly) {
+            return allOutgoingEdges;
         }
-        return edges;
+
+        // 3. 如果需要过滤（只保留 BIG_TRUCK 和 DRIVER），则进行流式过滤
+        // 注意：为了不改变原列表，我们返回一个新的列表
+        return allOutgoingEdges.stream()
+                .filter(e -> e.getMode() == TransportModeEnum.BIG_TRUCK || e.getMode() == TransportModeEnum.DRIVER)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -455,11 +481,10 @@ public class TransportGraphRouter {
         } else { // PRICE
             newGScore += edge.getPrice().doubleValue();
 
-
             // 1. 预估同城提车成本
             // 如果当前节点是起点，并且需要提车服务
             if (currentNode.getPrevNode() == null && query.isNeedSameCityPick()) {
-                // 判断未来第一条干线是否是代驾。如果是，提车费将被减免。
+                // 判断未来第一条路由是否是代驾。如果是，提车费将被减免。
                 if (edge.getMode() != TransportModeEnum.DRIVER) {
                     newGScore += sameCityServicePrice.doubleValue();
                 }
@@ -468,7 +493,7 @@ public class TransportGraphRouter {
             // 2. 预估同城送车成本
             // 如果下一个节点(neighbor)是终点，并且需要送车服务
             if (edge.getToCity().equals(endCity) && query.isNeedSameCityDeliver()) {
-                // 判断未来最后一条干线是否是代驾。如果是，送车费将被减免。
+                // 判断未来最后一条路由是否是代驾。如果是，送车费将被减免。
                 if (edge.getMode() != TransportModeEnum.DRIVER) {
                     newGScore += sameCityServicePrice.doubleValue();
                 }
