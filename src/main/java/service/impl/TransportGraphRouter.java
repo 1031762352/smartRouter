@@ -521,13 +521,13 @@ public class TransportGraphRouter {
         plan.setNeedSameCityDeliver(query.isNeedSameCityDeliver());
         plan.setOptimizeTarget(optimizeTarget);
 
-        // --- 核心改动：记录干线的首尾模式 ---
+        // 记录干线的首尾模式
         if (!segments.isEmpty()) {
             plan.setFirstMainMode(segments.get(0).getMode());
             plan.setLastMainMode(segments.get(segments.size() - 1).getMode());
         }
 
-        // --- 核心改动：设置最终价格（已包含预估的同城费） ---
+        // 设置最终价格（已包含预估的同城费）
         // 注意：这里的 endNode.getGScore() 已经是包含了干线费和预估同城费的总成本
         plan.setTotalPrice(BigDecimal.valueOf(endNode.getGScore()));
 
