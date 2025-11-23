@@ -18,7 +18,7 @@ public class TransportGraphRouter {
 
     // 存储整个运输网络的图结构，key是出发地-目的地对，value是对应的运输方式列表
     private final Map<CityPair, List<TransportEdge>> transportGraph;
-    // 新增：优化后的出边查找Map，key为出发城市，value为该城市所有的出边列表
+    // 优化后的出边查找Map，key为出发城市，value为该城市所有的出边列表
     private final Map<String, List<TransportEdge>> outgoingEdgesMap;
     // 城市基础信息Map，可用于获取城市坐标等信息
     private final Map<String, CityBaseData> cityBaseDataMap;
@@ -422,7 +422,7 @@ public class TransportGraphRouter {
     }
 
     /**
-     * 获取当前节点所有可能的出边（优化后版本）
+     * 获取当前节点所有可能的出边
      * @param currentNode 当前节点
      * @param bigTruckOnly 是否只考虑大板车运输
      * @return 出边列表
@@ -438,9 +438,7 @@ public class TransportGraphRouter {
         if (!bigTruckOnly) {
             return allOutgoingEdges;
         }
-
         // 3. 如果需要过滤（只保留 BIG_TRUCK 和 DRIVER），则进行流式过滤
-        // 注意：为了不改变原列表，我们返回一个新的列表
         return allOutgoingEdges.stream()
                 .filter(e -> e.getMode() == TransportModeEnum.BIG_TRUCK || e.getMode() == TransportModeEnum.DRIVER)
                 .collect(Collectors.toList());
